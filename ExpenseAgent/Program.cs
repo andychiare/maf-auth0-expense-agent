@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using ExpenseAgent.Agent;
+using ExpenseAgent.Services;
+using ExpenseAgent.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,8 +14,8 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services
     .AddAuth0WebAppAuthentication(options => {
-      options.Domain = builder.Configuration["Auth0:Domain"];
-      options.ClientId = builder.Configuration["Auth0:ClientId"];
+      options.Domain = builder.Configuration["Auth0:Domain"]!;
+      options.ClientId = builder.Configuration["Auth0:ClientId"]!;
     });
 
 builder.Services.AddDistributedMemoryCache();
@@ -27,7 +29,35 @@ builder.Services.AddRazorComponents()
     .AddInteractiveWebAssemblyComponents()
     .AddAuthenticationStateSerialization(); 
 
+builder.Services.AddSingleton<ExpenseReportService>();
+builder.Services.AddSingleton<FgaService>();
+
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var expenseService = scope.ServiceProvider.GetRequiredService<ExpenseReportService>();
+    await expenseService.EnsureCollectionAsync();
+
+    await expenseService.IngestAsync(new ExpenseReport
+    {
+        Id = "exp-001", EmployeeEmail = "alice@example.com",
+        Amount = 450.00m, Merchant = "Marriott Hotels",
+        Justification = "Client dinner during NYC conference", SubmittedAt = "2026-06-10"
+    });
+    await expenseService.IngestAsync(new ExpenseReport
+    {
+        Id = "exp-002", EmployeeEmail = "bob@example.com",
+        Amount = 0m, Merchant = "Delta Airlines",
+        Justification = "", SubmittedAt = "2026-06-12"
+    });
+    await expenseService.IngestAsync(new ExpenseReport
+    {
+        Id = "exp-003", EmployeeEmail = "carol@example.com",
+        Amount = 120.50m, Merchant = "",
+        Justification = "Team lunch", SubmittedAt = "2026-06-14"
+    });
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

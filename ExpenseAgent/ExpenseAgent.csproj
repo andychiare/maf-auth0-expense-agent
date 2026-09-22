@@ -10,9 +10,11 @@
   <ItemGroup>
     <PackageReference Include="Auth0.AspNetCore.Authentication" Version="1.7.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="CommunityToolkit.VectorData.InMemory" Version="1.0.0" />
     <PackageReference Include="Microsoft.Agents.AI" Version="1.17.0" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.3" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
+    <PackageReference Include="OpenFga.Sdk" Version="0.10.4" />
     <ProjectReference Include="..\ExpenseAgent.Client\ExpenseAgent.Client.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.0" />
   </ItemGroup>
