@@ -41,9 +41,12 @@ public class ExpenseAgentService
             - Tell the manager what you did and which fields were missing.
 
             If all required fields are present:
-            - Tell the manager the report looks complete and is ready for their decision.
+            - Call RequestManagerApproval with the expense ID and a brief one-line summary.
+            - The manager will receive a push notification on their phone.
+            - Wait for the result and tell the manager the outcome.
 
             Be concise and professional. Address the manager by name when you know it.
+            Process one report at a time. Do not trigger multiple approval requests simultaneously.
             """;
 
         IChatClient chatClient = new AzureOpenAIClient(endpoint, apiKey)

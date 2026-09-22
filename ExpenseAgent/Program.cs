@@ -65,6 +65,11 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSingleton<ExpenseReportService>();
 builder.Services.AddSingleton<FgaService>();
 
+builder.Services.AddHttpClient<ManagerApprovalService>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["ManagerApproval:ApiBaseUrl"]!);
+});
+
 builder.Services.AddScoped<GmailLinkContext>();
 builder.Services.AddSingleton<EmailService>();
 
@@ -78,7 +83,7 @@ using (var scope = app.Services.CreateScope())
     await expenseService.IngestAsync(new ExpenseReport
     {
         Id = "exp-001", EmployeeEmail = "alice@example.com",
-        Amount = 450.00m, Merchant = "Marriott Hotels",
+        Amount = 450.00m, Merchant = "X Hotels",
         Justification = "Client dinner during NYC conference", SubmittedAt = "2026-06-10"
     });
     await expenseService.IngestAsync(new ExpenseReport

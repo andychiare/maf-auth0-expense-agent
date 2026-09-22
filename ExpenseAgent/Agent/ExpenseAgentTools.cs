@@ -13,19 +13,22 @@ public class ExpenseAgentTools
     private readonly FgaService _fgaService;
     private readonly HttpClient _httpClient;
     private readonly string? _cookie;
+    private readonly ManagerApprovalService _approvalService;
 
     public ExpenseAgentTools(
         string managerId,
         ExpenseReportService expenseService,
         FgaService fgaService,
         HttpClient httpClient,
-        string? cookie)
+        string? cookie,
+        ManagerApprovalService approvalService)
     {
         _managerId = managerId;
         _expenseService = expenseService;
         _fgaService = fgaService;
         _httpClient = httpClient;
         _cookie = cookie;
+        _approvalService = approvalService;
     }
 
     [Description("Get the list of expense reports submitted by the manager's direct reports.")]
@@ -84,4 +87,12 @@ public class ExpenseAgentTools
 
         return $"Email sent to {employeeEmail} requesting: {missingFields}.";
     }
+
+    [Description("Send a push notification to the manager requesting approval or rejection of a complete expense report. Use only when the report has all required fields: amount, merchant, and justification.")]
+    public Task<string> RequestManagerApproval(
+        [Description("The expense report ID")] string expenseId,
+        [Description("A brief one-line summary: amount, merchant, and justification (e.g. '$450 at Hotel for NYC client dinner')")] string summary)
+    {
+        return _approvalService.RequestApprovalAsync(_managerId, expenseId, summary);
+    }    
 }

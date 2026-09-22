@@ -13,6 +13,7 @@
 @inject ExpenseAgentService AgentService
 @inject ExpenseReportService ExpenseService
 @inject FgaService FgaService
+@inject ManagerApprovalService ApprovalService
 
 <PageTitle>Expense Agent</PageTitle>
 
@@ -94,7 +95,7 @@
 
         try
         {
-            var tools = new ExpenseAgentTools(_userId, ExpenseService, FgaService, _apiClient, _cookie);
+            var tools = new ExpenseAgentTools(_userId, ExpenseService, FgaService, _apiClient, _cookie, ApprovalService);
             var reply = await AgentService.ChatAsync(_userId, text, _userName, tools);
             _messages.Add(("Agent", reply));
         }
