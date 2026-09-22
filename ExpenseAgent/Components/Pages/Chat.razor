@@ -1,0 +1,88 @@
+@page "/chat"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using ExpenseAgent.Agent
+
+@inject ExpenseAgentService AgentService
+
+<PageTitle>Expense Agent</PageTitle>
+
+<h2>Expense Agent</h2>
+
+<AuthorizeView>
+    <Authorized Context="auth">
+        <p class="text-muted">Logged in as <strong>@auth.User.Identity?.Name</strong></p>
+    </Authorized>
+</AuthorizeView>
+
+<div class="card mb-3" style="height: 350px; overflow-y: auto; padding: 12px;">
+    @foreach (var msg in _messages)
+    {
+        <p><strong>@msg.Role:</strong> @msg.Text</p>
+    }
+    @if (_thinking)
+    {
+        <p class="text-muted"><em>Agent is thinking...</em></p>
+    }
+</div>
+
+<div class="input-group">
+    <input class="form-control"
+           @bind="_inputText"
+           @bind:event="oninput"
+           @onkeydown="HandleKeyDown"
+           placeholder="Ask about expense reports..."
+           disabled="@_thinking" />
+    <button class="btn btn-primary" @onclick="SendMessage" disabled="@_thinking">Send</button>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private readonly List<(string Role, string Text)> _messages = new();
+    private string _inputText = "";
+    private string? _userId;
+    private string? _userName;
+    private bool _thinking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _userId = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            _userName = state.User.FindFirst("name")?.Value
+                ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        var text = _inputText.Trim();
+        if (string.IsNullOrEmpty(text) || _userId is null) return;
+
+        _inputText = "";
+        _messages.Add(("You", text));
+        _thinking = true;
+
+        try
+        {
+            var tools = new ExpenseAgentTools(_userId);
+            var reply = await AgentService.ChatAsync(_userId, text, _userName, tools);
+            _messages.Add(("Agent", reply));
+        }
+        finally
+        {
+            _thinking = false;
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SendMessage();
+    }
+}
