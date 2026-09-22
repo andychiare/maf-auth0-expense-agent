@@ -1,4 +1,9 @@
-﻿<!DOCTYPE html>
+﻿@using Auth0.AspNetCore.Authentication
+@using ExpenseAgent.Services
+
+@inject GmailLinkContext LinkContext
+
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -21,3 +26,21 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (HttpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            LinkContext.Cookie = HttpContext.Request.Headers.Cookie.ToString();
+
+            var token = await HttpContext.GetAccessTokenForConnectionAsync(
+                new AccessTokenForConnectionRequest { Connection = "google-oauth2" });
+
+            LinkContext.NeedsLink = token is null;
+        }
+    }
+}

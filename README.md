@@ -6,8 +6,11 @@ This project is the companion sample for the Auth0 blog post series "Building Se
 
 - Part 1: [User Authentication](https://auth0.com/blog/building-secure-ai-agents-with-microsoft-agent-framework-and-auth0-part-1-user-authentication/) — scaffolds a Blazor Web App with Auth0 authentication and wires it up to an AI agent built with the Microsoft Agent Framework and Azure OpenAI.
 - Part 2: [RAG Filtering](https://auth0.com/blog/building-secure-ai-agents-microsoft-agent-framework-auth0-part-2-rag-filtering/) — replaces the hardcoded expense data with a real vector store, adds semantic search over expense reports, and uses Auth0 Fine-Grained Authorization (FGA) to pre-filter search results so the agent only ever sees expenses the logged-in manager is authorized to read.
+- Part 3: [Sending Email with Token Vault](https://auth0.com/blog/building-secure-ai-agents-microsoft-agent-framework-auth0-part-3-sending-email-with-token-vault/) — adds a `SendMissingDataEmail` tool that emails direct reports about incomplete expense reports via Gmail, using Auth0 Token Vault to obtain Google access tokens on demand so the app (and the LLM) never stores or sees the user's Gmail credentials.
 
 Expense reports are now embedded and indexed in an in-memory vector store (via `CommunityToolkit.VectorData.InMemory`), and the `GetExpenseReports` tool performs a semantic search filtered to the IDs returned by an OpenFGA `ListObjects` authorization check for the current manager — permissions are applied *before* retrieval, not after, so unauthorized records never reach the LLM's context.
+
+The agent can also send email on the manager's behalf. When a manager asks about expense reports missing required data, the `SendMissingDataEmail` tool uses Auth0 Token Vault to silently exchange the manager's Auth0 session for a fresh Google access token, then calls the Gmail API (`gmail.send` scope) to notify the report's owner. The access token is fetched just-in-time inside the tool implementation and discarded after use — it's injected via constructor rather than passed as a tool parameter, so it never appears in the tool schema the LLM sees and can never leak into the model's context. Managers who didn't originally log in with Google are prompted to link a Google account post-login via Auth0's Connected Accounts flow (the My Account API), after which Token Vault can mint Gmail tokens for them too.
 
 ## Minimum Requirements
 
@@ -15,14 +18,18 @@ Expense reports are now embedded and indexed in an in-memory vector store (via `
 - An [Auth0](https://auth0.com/) account with a Regular Web Application registered (free tier is sufficient)
 - An [Auth0 FGA](https://dashboard.fga.dev/) store with an authorization model defining an `expense` type and a `can_read` relation to `user`, plus permission tuples mapping managers to the expense IDs they're allowed to read
 - An Azure subscription with an Azure OpenAI / Azure AI Foundry resource, with a chat model (e.g. `gpt-4.1-mini`) and an embedding model (e.g. `text-embedding-3-small`) deployed
+- A Google Cloud project with an OAuth 2.0 client (Web application type) and the Gmail API enabled, requesting the `gmail.send` scope
+- [Auth0 Token Vault](https://auth0.com/docs/secure/tokens/token-vault) enabled on your tenant's Google social connection, with **Offline Access** turned on so refresh tokens can be exchanged for fresh Google access tokens
+- The [Auth0 My Account API](https://auth0.com/docs/api/myaccount) activated, for linking a Google account post-login when a manager didn't originally sign in with Google
+- The `Auth0.AspNetCore.Authentication` NuGet package at v1.9.0 or later, plus the `Auth0.MyAccountApi` (beta) SDK
 
 ## Setup
 
 1. **Register an Auth0 application**
    - Create a Regular Web Application in your Auth0 tenant.
-   - Set **Allowed Callback URLs** to `https://localhost:7099/callback`.
+   - Set **Allowed Callback URLs** to `https://localhost:7099/callback,https://localhost:7099/Account/ConnectGoogleCallback`.
    - Set **Allowed Logout URLs** to `https://localhost:7099/`.
-   - Note the application's **Domain** and **Client ID**.
+   - Note the application's **Domain**, **Client ID**, and **Client Secret**.
 
 2. **Deploy Azure OpenAI models**
    - In Azure AI Foundry / Azure OpenAI, deploy a chat model (e.g. `gpt-4.1-mini`) and an embedding model (e.g. `text-embedding-3-small`).
@@ -33,7 +40,23 @@ Expense reports are now embedded and indexed in an in-memory vector store (via `
    - Write tuples granting each manager `can_read` on the specific expense IDs their direct reports own.
    - Create an FGA API client and note the **Store ID**, **Client ID**, **Client Secret**, **API URL**, **API Token Issuer**, and **API Audience**.
 
-4. **Configure the app**
+4. **Create a Google OAuth client and enable the Gmail API**
+   - In the [Google Cloud Console](https://console.cloud.google.com/), create (or reuse) a project, enable the **Gmail API**, and configure the OAuth consent screen.
+   - Create an OAuth 2.0 **Client ID** of type **Web application**, and add Auth0's social-connection callback URL (`https://YOUR_AUTH0_DOMAIN/login/callback`) to its **Authorized redirect URIs**.
+   - Note the **Client ID** and **Client Secret**.
+
+5. **Enable Token Vault on the Google connection**
+   - In your Auth0 tenant, open the **Google** social connection and enter the Client ID/Secret from the previous step.
+   - Turn on **Offline Access** so Auth0 can request and store a refresh token for the user.
+   - Under **Token Vault**, enable it for this connection and add the `https://www.googleapis.com/auth/gmail.send` scope so Token Vault is allowed to mint Gmail-sending access tokens.
+   - On your Auth0 application, enable the **Token Vault** grant type.
+
+6. **Activate the My Account API and configure MRRT**
+   - Activate the [My Account API](https://auth0.com/docs/api/myaccount) for your tenant.
+   - Create a Client Grant for your application authorizing the `create:me:connected_accounts` scope against the My Account API, so the app can drive the Connected Accounts flow for managers who didn't log in with Google.
+   - Configure a **Multi-Resource Refresh Token (MRRT)** policy so the manager's session can be silently exchanged for a Google access token via Token Vault without an extra consent prompt.
+
+7. **Configure the app**
 
    Fill in `ExpenseAgent/appsettings.json` (or, better, use [`dotnet user-secrets`](https://learn.microsoft.com/aspnet/core/security/app-secrets) so real credentials aren't committed):
 
@@ -41,7 +64,8 @@ Expense reports are now embedded and indexed in an in-memory vector store (via `
    {
      "Auth0": {
        "Domain": "YOUR_AUTH0_DOMAIN",
-       "ClientId": "YOUR_CLIENT_ID"
+       "ClientId": "YOUR_CLIENT_ID",
+       "ClientSecret": "YOUR_CLIENT_SECRET"
      },
      "AzureOpenAI": {
        "Endpoint": "https://YOUR-RESOURCE.openai.azure.com",
@@ -71,5 +95,7 @@ Then:
 
 1. Browse to `https://localhost:7099`.
 2. Log in via `/account/login` (redirects to Auth0's hosted login page).
-3. Navigate to `/chat` and ask the assistant about expense reports, e.g. *"What expenses has Alice submitted?"*
-4. Log out via `/account/logout`.
+3. If you didn't log in with Google, you'll see a banner prompting you to link a Google account — this drives the Connected Accounts flow through `/Account/ConnectGoogleCallback` so Token Vault can mint Gmail access tokens for you too.
+4. Navigate to `/chat` and ask the assistant about expense reports, e.g. *"What expenses has Alice submitted?"*
+5. Ask about expense reports with missing required data, e.g. *"Does Alice have any expense reports missing information? If so, email her about it."* — this triggers the `SendMissingDataEmail` tool, which uses Token Vault to fetch a fresh Google access token and sends the notification via the Gmail API.
+6. Log out via `/account/logout`.

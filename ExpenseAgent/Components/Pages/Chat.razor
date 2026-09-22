@@ -6,6 +6,9 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using ExpenseAgent.Agent
 @using ExpenseAgent.Services
+@inject GmailLinkContext LinkContext
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
 
 @inject ExpenseAgentService AgentService
 @inject ExpenseReportService ExpenseService
@@ -20,6 +23,14 @@
         <p class="text-muted">Logged in as <strong>@auth.User.Identity?.Name</strong></p>
     </Authorized>
 </AuthorizeView>
+
+@if (_needsGoogleLink)
+{
+    <div class="alert alert-warning">
+        To send emails on your behalf, I need access to your Gmail account.
+        <a href="/Account/ConnectGoogle" class="alert-link">Authorize Gmail access</a>
+    </div>
+}
 
 <div class="card mb-3" style="height: 350px; overflow-y: auto; padding: 12px;">
     @foreach (var msg in _messages)
@@ -51,6 +62,9 @@
     private string? _userId;
     private string? _userName;
     private bool _thinking;
+        private string? _cookie;
+    private bool _needsGoogleLink;
+    private HttpClient? _apiClient;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,13 +74,19 @@
             _userId = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             _userName = state.User.FindFirst("name")?.Value
                 ?? state.User.FindFirst(System.Security.Claims.ClaimTypes.GivenName)?.Value;
+
+            _cookie = LinkContext.Cookie;
+            _needsGoogleLink = LinkContext.NeedsLink;
+
+            _apiClient = HttpClientFactory.CreateClient();
+            _apiClient.BaseAddress = new Uri(Navigation.BaseUri);
         }
     }
 
     private async Task SendMessage()
     {
         var text = _inputText.Trim();
-        if (string.IsNullOrEmpty(text) || _userId is null) return;
+        if (string.IsNullOrEmpty(text) || _userId is null || _apiClient is null) return;
 
         _inputText = "";
         _messages.Add(("You", text));
@@ -74,7 +94,7 @@
 
         try
         {
-            var tools = new ExpenseAgentTools(_userId, ExpenseService, FgaService);
+            var tools = new ExpenseAgentTools(_userId, ExpenseService, FgaService, _apiClient, _cookie);
             var reply = await AgentService.ChatAsync(_userId, text, _userName, tools);
             _messages.Add(("Agent", reply));
         }
