@@ -5,8 +5,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using ExpenseAgent.Agent
+@using ExpenseAgent.Services
 
 @inject ExpenseAgentService AgentService
+@inject ExpenseReportService ExpenseService
+@inject FgaService FgaService
 
 <PageTitle>Expense Agent</PageTitle>
 
@@ -71,7 +74,7 @@
 
         try
         {
-            var tools = new ExpenseAgentTools(_userId);
+            var tools = new ExpenseAgentTools(_userId, ExpenseService, FgaService);
             var reply = await AgentService.ChatAsync(_userId, text, _userName, tools);
             _messages.Add(("Agent", reply));
         }

@@ -1,56 +1,34 @@
 using System.ComponentModel;
 using System.Text.Json;
+using ExpenseAgent.Services;
 
 namespace ExpenseAgent.Agent;
 
 public class ExpenseAgentTools
 {
     private readonly string _managerId;
+    private readonly ExpenseReportService _expenseService;
+    private readonly FgaService _fgaService;
 
-    public ExpenseAgentTools(string managerId)
+    public ExpenseAgentTools(string managerId, ExpenseReportService expenseService, FgaService fgaService)
     {
         _managerId = managerId;
+        _expenseService = expenseService;
+        _fgaService = fgaService;
     }
 
     [Description("Get the list of expense reports submitted by the manager's direct reports.")]
-    public string GetExpenseReports(
-        [Description("Optional keyword to filter expense reports by description or merchant")] string? filter = null)
+    public async Task<string> GetExpenseReports(
+        [Description("Optional keyword to filter expense reports by description or merchant.")] string? query = null)
     {
-        // Hardcoded sample data
-        var reports = new[]
-        {
-            new {
-                Id = "exp-001",
-                Employee = "alice@example.com",
-                Amount = 450.00m,
-                Merchant = "Marriott Hotels",
-                Justification = "Client dinner during NYC conference",
-                SubmittedAt = "2026-06-10"
-            },
-            new {
-                Id = "exp-002",
-                Employee = "bob@example.com",
-                Amount = 0m,
-                Merchant = "Delta Airlines",
-                Justification = "",
-                SubmittedAt = "2026-06-12"
-            },
-            new {
-                Id = "exp-003",
-                Employee = "carol@example.com",
-                Amount = 120.50m,
-                Merchant = "",
-                Justification = "Team lunch",
-                SubmittedAt = "2026-06-14"
-            }
-        };
+        var authorizedIds = await _fgaService.GetAuthorizedExpensesAsync(_managerId);
 
-        var filtered = filter is null
-            ? reports
-            : reports.Where(r =>
-                r.Merchant.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                r.Justification.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (authorizedIds.Count == 0)
+            return "No expense reports found for your direct reports.";
 
-        return JsonSerializer.Serialize(filtered);
+        var reports = await _expenseService.SearchAsync(
+            query ?? "expense report", authorizedIds);
+            
+        return JsonSerializer.Serialize(reports);
     }
 }
